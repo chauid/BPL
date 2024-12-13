@@ -191,7 +191,9 @@ double bpl::Functions::CategoricalCrossEntropy(vector<double> target, vector<dou
 
 double bpl::Functions::CategoricalCrossEntropy(double* target, double* output, int n)
 {
-	return 0.0;
+	double error = 0.0;
+	for (int i = 0; i < n; i++) error += target[i] * log(output[i]); // ¥Ò(target - ln(output))
+	return error;
 }
 
 double bpl::Functions::SparseCrossEntropyLoss(vector<double> target, vector<double> output)
