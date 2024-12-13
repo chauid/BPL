@@ -33,4 +33,12 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="cuda.cu">
+      <Filter>소스 파일</Filter>
+    </CudaCompile>
+    <CudaCompile Include="cuda.cuh">
+      <Filter>헤더 파일</Filter>
+    </CudaCompile>
+  </ItemGroup>
 </Project>
