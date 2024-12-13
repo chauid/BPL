@@ -19,7 +19,7 @@ vector<vector<double>> bpl::Functions::matrixMultiplication(vector<vector<double
 	size_t matrix2_n_length = matrix2.size(); // 뒷행렬 2차원: 행
 	size_t matrix2_r_length = matrix2[0].size(); // 뒷행렬 1차원: 열
 	vector<vector<double>> result(matrix1_m_length, vector<double>(matrix2_r_length)); // m * r
-	double sum = 0;
+	double sum = 0.0;
 
 	if (matrix1_m_length < 1 || matrix2_n_length < 1) { printf("행렬의 크기는 최소 1 * 1 이상이여야 함.\n"); return vector<vector<double>>(); }
 	if (matrix1_n_length != matrix2_n_length) { printf("앞 행렬의 열의 수와 뒷 행렬의 행의 수가 일치하지 않음.\n");  return vector<vector<double>>(); }
@@ -36,22 +36,17 @@ vector<vector<double>> bpl::Functions::matrixMultiplication(vector<vector<double
 	return result;
 }
 
-double* bpl::Functions::matrixMultiplication(int m, int n, int k, double* A, double* B)
+void bpl::Functions::matrixMultiplication(int m, int n, int k, double* A, double* B, double* C)
 {
-	double* result = (double*)malloc(sizeof(double) * m * n);
-	if (result)
+	for (int idx_m = 0; idx_m < m; idx_m++)
 	{
-		for (int idx_m = 0; idx_m < m; idx_m++)
+		for (int idx_n = 0; idx_n < n; idx_n++)
 		{
-			for (int idx_n = 0; idx_n < n; idx_n++)
-			{
-				double sum = 0;
-				for (int idx_k = 0; idx_k < k; idx_k++) sum += A[idx_m * k + idx_k] * B[idx_k * n + idx_n];
-				result[idx_m * n + idx_n] = sum;
-			}
+			double sum = 0.0;
+			for (int idx_k = 0; idx_k < k; idx_k++) sum += A[idx_m * k + idx_k] * B[idx_k * n + idx_n];
+			C[idx_m * n + idx_n] = sum;
 		}
 	}
-	return result;
 }
 
 vector<int> bpl::Functions::oneHotEncoding(vector<double> data)
@@ -99,13 +94,13 @@ double bpl::Functions::Sigmoid(double a, double b, double x)
 
 double bpl::Functions::tanh(double x)
 {
-	return 2 * Sigmoid(2 * x) - 1;
+	return 2.0 * Sigmoid(2.0 * x) - 1;
 }
 
 vector<double> bpl::Functions::Softmax(vector<double> x)
 {
-	double max = 0;
-	double sum = 0;
+	double max = 0.0;
+	double sum = 0.0;
 	vector<double> result(x.size());
 	for (size_t i = 0; i < x.size(); i++) if (max < x[i]) max = x[i]; // max
 	for (size_t i = 0; i < x.size(); i++)
@@ -120,8 +115,8 @@ vector<double> bpl::Functions::Softmax(vector<double> x)
 
 void bpl::Functions::Softmax(double* x, int x_length)
 {
-	double max = 0;
-	double sum = 0;
+	double max = 0.0;
+	double sum = 0.0;
 	double* result = (double*)malloc(sizeof(double) * x_length);
 	if (!result) return;
 	for (size_t i = 0; i < x_length; i++) if (max < x[i]) max = x[i]; // max
@@ -136,17 +131,17 @@ void bpl::Functions::Softmax(double* x, int x_length)
 
 double bpl::Functions::ReLU(double x)
 {
-	return x > 0 ? x : 0.0;
+	return x > 0.0 ? x : 0.0;
 }
 
 double bpl::Functions::leakyReLU(double x)
 {
-	return x > 0 ? x : 0.01 * x;
+	return x > 0.0 ? x : 0.01 * x;
 }
 
 double bpl::Functions::ELU(double x)
 {
-	return x > 0 ? x : exp(x) - 1;
+	return x > 0.0 ? x : exp(x) - 1;
 }
 
 double bpl::Functions::Swish(double x, double beta)
@@ -158,7 +153,7 @@ double bpl::Functions::MSE(vector<double> target, vector<double> output)
 {
 	if (target.size() != output.size()) { printf("MSE Error: 실제값과 예측값의 배열 크기가 일치하지 않음.\n"); return 0.0; }
 	size_t error_length = target.size(); // = output.size()
-	double error = 0;
+	double error = 0.0;
 	for (size_t i = 0; i < error_length; i++) error += pow(target[i] - output[i], 2); // Σ(target - output)²
 
 	return error / error_length;
@@ -166,7 +161,7 @@ double bpl::Functions::MSE(vector<double> target, vector<double> output)
 
 double bpl::Functions::MSE(double* target, double* output, int n)
 {
-	double error = 0;
+	double error = 0.0;
 	for (size_t i = 0; i < n; i++) error += pow(target[i] - output[i], 2); // Σ(target - output)²
 
 	return error / n;
@@ -176,22 +171,36 @@ double bpl::Functions::BinaryCrossEntropy(vector<double> target, vector<double> 
 {
 	if (target.size() != output.size()) { printf("Binary CrossEntropyLoss Error: 실제값과 예측값의 배열 크기가 일치하지 않음.\n"); return 0.0; }
 	size_t error_length = target.size(); // = output.size()
-	return 0.0;
+	double error = 0.0;
+	for (size_t i = 0; i < error_length; i++)
+	{
+		error += target[i] - log(output[i]) + (1 - target[i]) * (1 - log(output[i]));
+	}
+	return (-1.0) * (error / error_length);
+}
+
+double bpl::Functions::BinaryCrossEntropy(double* target, double* output, int n)
+{
+	double error = 0.0;
+	for (int i = 0; i < n; i++) error += target[i] * log(output[i]) + (1 - target[i]) * (1 - output[i]);
+	return (-1.0) * (error / n);
 }
 
 double bpl::Functions::CategoricalCrossEntropy(vector<double> target, vector<double> output)
 {
 	if (target.size() != output.size()) { printf("Cross Entropy Loss Error: 실제값과 예측값의 배열 크기가 일치하지 않음.\n"); return 0.0; }
 	size_t error_length = target.size(); // = output.size()
-	double error = 0;
+	double error = 0.0;
 	for (size_t i = 0; i < error_length; i++) error += target[i] * log(output[i]); // Σ(target - ln(output))
 
-	return (-1.0) * error / error_length;
+	return (-1.0) * error;
 }
 
 double bpl::Functions::CategoricalCrossEntropy(double* target, double* output, int n)
 {
-	return 0.0;
+	double error = 0.0;
+	for (int i = 0; i < n; i++) error += target[i] * log(output[i]); // Σ(target - ln(output))
+	return (-1.0) * error;
 }
 
 double bpl::Functions::SparseCrossEntropyLoss(vector<double> target, vector<double> output)

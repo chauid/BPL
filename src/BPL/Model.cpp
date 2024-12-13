@@ -41,6 +41,9 @@ void bpl::Model::errorHandling(string error_source, ErrorType error_type, string
 	case ErrorType::InSufficientMemory:
 		printf("메모리 할당 오류: %s\n", param1.c_str());
 		break;
+	case ErrorType::DataError:
+		printf("데이터 오류: %s\n", param1.c_str());
+		break;
 	case ErrorType::CudaError:
 		printf("Error Number: %s\n", param1.c_str());
 		break;
@@ -362,7 +365,7 @@ void bpl::Model::forwardPropagation(size_t dataset_index, size_t batch_size, dat
 					exit(1);
 					break;
 				}
-				if (this->debug_mode) printf("active(net[0][%zu](%lf)) + bias(%lf)) = %lf\n", p, this->result_C[batch_index * output_length + p], bias_matrix[layer_index][p * batch_size + batch_index], out_hidden_layer[layer_index][p * batch_size + batch_index]);
+				if (this->debug_mode) printf("active(net[0][%zu](%lf)) + bias(%lf)) = %lf\n", p, this->result_C[batch_index * output_length + p], bias_matrix[layer_index][p * batch_size + batch_index], out_hidden_layer[layer_index][p * batch_size + batch_index] - bias_matrix[layer_index][p * batch_size + batch_index]);
 			}
 		}
 		if (this->debug_mode) printf("\n");
@@ -374,18 +377,33 @@ void bpl::Model::forwardPropagation(size_t dataset_index, size_t batch_size, dat
 		switch (loss_function)
 		{
 		case LossFunction::MSE:
-			*loss = Functions::MSE(&target[dataset_index][0], this->out_hidden_layer[this->number_of_hidden_layer - 1], this->number_of_nodes.back());
+			*loss = Functions::MSE(&this->target[dataset_index][0], this->out_hidden_layer[this->number_of_hidden_layer - 1], this->number_of_nodes.back());
 			for (size_t batch_index = 1; batch_index < batch_size; batch_index++)
 			{
 				for (size_t p = 0; p < this->number_of_nodes.back(); p++) output_layer[p] = this->out_hidden_layer[this->number_of_hidden_layer - 1][batch_index * output_length + p];
-				*loss += Functions::MSE(&target[dataset_index + batch_index][0], output_layer, this->number_of_nodes.back());
+				*loss += Functions::MSE(&this->target[dataset_index + batch_index][0], output_layer, this->number_of_nodes.back());
 			}
+			*loss /= batch_size;
 			break;
 		case LossFunction::BinaryCrossEntropyLoss:
+			*loss = Functions::BinaryCrossEntropy(&this->target[dataset_index][0], this->out_hidden_layer[this->number_of_hidden_layer - 1], this->number_of_nodes.back());
+			for (size_t batch_index = 1; batch_index < batch_size; batch_index++)
+			{
+				for (size_t p = 0; p < this->number_of_nodes.back(); p++) output_layer[p] = this->out_hidden_layer[this->number_of_hidden_layer - 1][batch_index * output_length + p];
+				*loss += Functions::BinaryCrossEntropy(&this->target[dataset_index + batch_index][0], output_layer, this->number_of_nodes.back());
+			}
+			*loss /= batch_size;
 			break;
 		case LossFunction::HingeLoss:
 			break;
 		case LossFunction::CategoricalCrossEntropyLoss:
+			*loss = Functions::CategoricalCrossEntropy(&this->target[dataset_index][0], this->out_hidden_layer[this->number_of_hidden_layer - 1], this->number_of_nodes.back());
+			for (size_t batch_index = 1; batch_index < batch_size; batch_index++)
+			{
+				for (size_t p = 0; p < this->number_of_nodes.back(); p++) output_layer[p] = this->out_hidden_layer[this->number_of_hidden_layer - 1][batch_index * output_length + p];
+				*loss += Functions::CategoricalCrossEntropy(&this->target[dataset_index + batch_index][0], output_layer, this->number_of_nodes.back());
+			}
+			*loss /= batch_size;
 			break;
 		case LossFunction::SparseCrossEntropyLoss:
 			break;
@@ -423,6 +441,9 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 			{
 			case ActiveFunction::Sigmoid:
 				active_diff = out_p * (1 - out_p); // dx/x sigmoid(x) = sigmoid(x) * (1 - sigmoid(x))
+				if (active_diff < this->epsilon) active_diff = this->epsilon;
+				if (active_diff > 1 - this->epsilon) active_diff = 1 - this->epsilon;
+				if (debug_mode) cout << "active diff[0] = " << out_p << "*" << (1 - out_p) << '\n';
 				break;
 			case ActiveFunction::HyperbolicTangent:
 				active_diff = (1 - out_p) * (1 + out_p);  // dx/x tanh(x) = (1 - tanh(x)) * (1 + tanh(x))
@@ -464,18 +485,32 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 			switch (this->loss_function)
 			{
 			case LossFunction::MSE:
-				// δ[last_index][p] = ∂Error[p]/∂net[p] = (2 / pn) * (실제값 - 예측값) * (예측값 * (1 - 예측값)) * (-1) | (2 / pn) * (실제값 - 예측값) = MSE 도함수
+				// δ[last_index][p] = ∂Error[p]/∂out[p] = -(2 / pn) * (실제값 - 예측값) * (예측값 * (1 - 예측값)) | -(2 / pn) * (실제값 - 예측값) = MSE 도함수
 				// 손실함수 미분 * 활성화함수 미분 * (-1)
-				this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = (2.0 / target_length) * (target_p - out_p) * active_diff * (-1);
+				this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = -(2.0 / target_length) * (target_p - out_p) * active_diff;
+				if (debug_mode) cout << "delta hidden layer= " << -(2.0 / target_length) << "*" << (target_p - out_p) << "*" << active_diff << '\n';
 				break;
 			case LossFunction::BinaryCrossEntropyLoss:
-				printf("BinaryCrossEntropy 아직 구현 안 됨\n");
+				// target == 1, (target / output)
+				// target == 0, -(1 - target) / (1 - output)
+				// ∂Error[p]/∂out[p] = -(1 / pn) * ()
+				if (out_p < this->epsilon) out_p = this->epsilon;
+				if (out_p > (1 - this->epsilon)) out_p = 1 - this->epsilon;
+				this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = -(target_p / out_p) + (1 - target_p) / (1 - out_p);
+				//if (target_p == 1.0) this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = -(target_p / out_p);
+				//else if (target_p == 0.0) this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = (1 - target_p) / (1 - out_p);
+				//else { errorHandling("backPropagation", ErrorType::DataError, "실제값은 One-Hot Vector이어야 함"); return; }
 				break;
 			case LossFunction::HingeLoss:
 				printf("HingeLoss 아직 구현 안 됨\n");
 				break;
 			case LossFunction::CategoricalCrossEntropyLoss:
-				printf("CrossEntropyLoss 아직 구현 안 됨\n");
+				// CrossEntropy + Softmax => ∂Error[p]/∂out[p] = output - target
+				if (this->active_method_matrix.back() == ActiveFunction::Softmax)
+				{
+					this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = out_p - target_p;
+				}
+				else this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = -(target_p / out_p);
 				break;
 			case LossFunction::SparseCrossEntropyLoss:
 				printf("SparseCrossEntropyLoss 아직 구현 안 됨\n");
@@ -485,7 +520,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 				exit(1);
 				break;
 			}
-			//printf("\ndelta: %.9lf\n", this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p]);
+			if (debug_mode) printf("output layer delta batch[0] = %.9lf\n", this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p]);
 		}
 	}
 
@@ -498,6 +533,9 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 		cublasSetMatrix(input_length, output_length, sizeof(data_type), this->weight_matrix[layer_index + 1], input_length, this->dev_A, input_length);
 		cublasSetMatrix(output_length, batch_size, sizeof(data_type), this->delta_hidden_layer[layer_index + 1], output_length, this->dev_B, output_length);
 		cublasSetMatrix(input_length, batch_size, sizeof(data_type), this->result_C, input_length, this->dev_C, input_length);
+
+		if (debug_mode) Functions::printArray("가중치 행렬", input_length * this->number_of_input_node, this->weight_matrix[layer_index + 1], input_length);
+		if (debug_mode) Functions::printArray("델타 행렬", output_length * batch_size, this->delta_hidden_layer[layer_index + 1], output_length);
 
 		cublasDgemm(this->handle, CUBLAS_OP_N, CUBLAS_OP_N, input_length, batch_size, output_length, &alpha, this->dev_A, input_length, this->dev_B, output_length, &beta, this->dev_C, input_length);
 		cublasGetMatrix(input_length, batch_size, sizeof(data_type), this->dev_C, input_length, this->result_C, input_length);
@@ -512,6 +550,9 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 				{
 				case ActiveFunction::Sigmoid:
 					active_diff = out_j * (1 - out_j); // dx/x sigmoid(x) = sigmoid(x) * (1 - sigmoid(x))
+					if (active_diff < this->epsilon) active_diff = this->epsilon;
+					if (active_diff > 1 - this->epsilon) active_diff = 1 - this->epsilon;
+					if (debug_mode) cout << "active diff[" << j << "]=" << out_j << "*" << (1 - out_j) << '\n';
 					break;
 				case ActiveFunction::HyperbolicTangent:
 					active_diff = (1 - out_j) * (1 + out_j); // dx/x tanh(x) = (1 - tanh(x)) * (1 + tanh(x))
@@ -538,6 +579,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 					break;
 				}
 				this->delta_hidden_layer[layer_index][batch_index * input_length + j] = result_C[batch_index * input_length + j] * active_diff;
+				if (debug_mode) printf("delta batch[%zu] = %.15lf, result_C[%zu]: %.15lf\n", batch_index, this->delta_hidden_layer[layer_index][batch_index * input_length + j], j, result_C[batch_index * input_length + j]);
 			}
 		}
 	}
@@ -571,6 +613,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 	cublasDgemm(this->handle, CUBLAS_OP_N, CUBLAS_OP_T, input_length, output_length, batch_size, &alpha, this->dev_A, input_length, this->dev_B, output_length, &beta, this->dev_C, input_length);
 	cublasDscal(this->handle, weight_length, &divide_batch, this->dev_C, 1);
 
+	if (debug_mode) Functions::printArray("기존 가중치", this->number_of_nodes[0] * this->number_of_input_node, this->weight_matrix[0], this->number_of_input_node);
 	switch (this->optimizer)
 	{
 	case Optimizer::GD:
@@ -683,6 +726,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 		exit(1);
 		break;
 	}
+	if (debug_mode) Functions::printArray("갱신 후 가중치", this->number_of_nodes[0] * this->number_of_input_node, this->weight_matrix[0], this->number_of_input_node);
 	free(copy_input);
 	free(host_A);
 
@@ -699,6 +743,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 		cublasDgemm(this->handle, CUBLAS_OP_N, CUBLAS_OP_T, input_length, output_length, batch_size, &alpha, this->dev_A, input_length, this->dev_B, output_length, &beta, this->dev_C, input_length);
 		cublasDscal(this->handle, weight_length, &divide_batch, this->dev_C, 1);
 
+		if (debug_mode) Functions::printArray("기존 가중치[i]", this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1], this->weight_matrix[layer_index], this->number_of_nodes[layer_index - 1]);
 		switch (this->optimizer)
 		{
 		case Optimizer::GD:
@@ -808,6 +853,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 			exit(1);
 			break;
 		}
+		if (debug_mode) Functions::printArray("갱신 후 가중치[i]", this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1], this->weight_matrix[layer_index], this->number_of_nodes[layer_index - 1]);
 	}
 }
 
@@ -1018,7 +1064,7 @@ void bpl::Model::loadModel(string file_name)
 	this->is_loaded = true;
 }
 
-void bpl::Model::addLayer(int node_count, ActiveFunction active_function)
+void bpl::Model::addDenseLayer(int node_count, ActiveFunction active_function)
 {
 	if (this->is_prepared || this->is_loaded) errorHandling("addLayer", ErrorType::ModelModifiedError);
 
@@ -1034,6 +1080,7 @@ void bpl::Model::addFlattenLayer()
 
 void bpl::Model::addDropoutLayer(float dropout_rate)
 {
+
 }
 
 void bpl::Model::readInputData(const char* file_name, bool print_input_data)
@@ -1225,11 +1272,12 @@ void bpl::Model::prepare(hyper_parameters params)
 	/* 가중치 초기화 */
 	random_device rd;
 	mt19937 gen(rd());
-	uniform_real_distribution<data_type> dist(0.0, 1.0); // 0.0 ~ 1.0
-	normal_distribution<data_type> distr(0.5, 0.5); // 0.0 ~ 1.0
-	switch (weight_init)
+	uniform_real_distribution<data_type> distu(0.0, 1.0); // 0.0 ~ 1.0
+	normal_distribution<data_type> distn(0.5, 0.5); // 0.0 ~ 1.0
+	switch (params.weight_init)
 	{
 	case WeightInitMethod::ZeroInitialize:
+	{
 		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
 		{
 			this->weight_matrix[0][offset] = 0.0;
@@ -1242,38 +1290,79 @@ void bpl::Model::prepare(hyper_parameters params)
 			}
 		}
 		break;
-	case WeightInitMethod::UniformDistribution:
-		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
-		{
-			this->weight_matrix[0][offset] = dist(gen);
-		}
-		for (size_t layer_index = 1; layer_index < this->number_of_hidden_layer; layer_index++)
-		{
-			for (size_t offset = 0; offset < this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1]; offset++)
-			{
-				this->weight_matrix[layer_index][offset] = dist(gen);
-			}
-		}
-		break;
+	}
 	case WeightInitMethod::NormalDistribution:
+	{
 		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
 		{
-			this->weight_matrix[0][offset] = distr(gen);
+			this->weight_matrix[0][offset] = distn(gen);
 		}
 		for (size_t layer_index = 1; layer_index < this->number_of_hidden_layer; layer_index++)
 		{
 			for (size_t offset = 0; offset < this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1]; offset++)
 			{
-				this->weight_matrix[layer_index][offset] = distr(gen);
+				this->weight_matrix[layer_index][offset] = distn(gen);
 			}
 		}
 		break;
-	case WeightInitMethod::XavierGlorot:
+	}
+	case WeightInitMethod::UniformDistribution:
+	{
+		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
+		{
+			this->weight_matrix[0][offset] = distu(gen);
+		}
+		for (size_t layer_index = 1; layer_index < this->number_of_hidden_layer; layer_index++)
+		{
+			for (size_t offset = 0; offset < this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1]; offset++)
+			{
+				this->weight_matrix[layer_index][offset] = distu(gen);
+			}
+		}
 		break;
+	}
+	case WeightInitMethod::XavierNormalDistribution:
+	{
+		normal_distribution<data_type> xdistn0(0, sqrt(2.0 / (this->number_of_input_node + this->number_of_nodes[0])));
+		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
+		{
+			this->weight_matrix[0][offset] = xdistn0(gen);
+		}
+		for (size_t layer_index = 1; layer_index < this->number_of_hidden_layer; layer_index++)
+		{
+			normal_distribution<data_type> xdistn(0, sqrt(2.0 / (this->number_of_nodes[layer_index - 1] + this->number_of_nodes[layer_index])));
+			for (size_t offset = 0; offset < this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1]; offset++)
+			{
+				this->weight_matrix[layer_index][offset] = xdistn(gen);
+			}
+		}
+		break;
+	}
+	case WeightInitMethod::XavierUniformDistribution:
+	{
+		uniform_real_distribution<data_type> xdistu0(-sqrt(6.0 / (this->number_of_input_node + this->number_of_nodes[0])), sqrt(6.0 / (this->number_of_input_node + this->number_of_nodes[0])));
+		for (size_t offset = 0; offset < this->number_of_nodes[0] * this->number_of_input_node; offset++)
+		{
+			this->weight_matrix[0][offset] = xdistu0(gen);
+		}
+		for (size_t layer_index = 1; layer_index < this->number_of_hidden_layer; layer_index++)
+		{
+			uniform_real_distribution<data_type> xdistu(-sqrt(6.0 / (this->number_of_nodes[layer_index - 1] + this->number_of_nodes[layer_index])), sqrt(6.0 / (this->number_of_nodes[layer_index - 1] + this->number_of_nodes[layer_index])));
+			for (size_t offset = 0; offset < this->number_of_nodes[layer_index] * this->number_of_nodes[layer_index - 1]; offset++)
+			{
+				this->weight_matrix[layer_index][offset] = xdistu(gen);
+			}
+		}
+		break;
+	}
 	case WeightInitMethod::He:
+	{
 		break;
+	}
 	default:
+	{
 		break;
+	}
 	}
 
 	/* no_batch 편향 초기화 */
@@ -1281,7 +1370,7 @@ void bpl::Model::prepare(hyper_parameters params)
 	{
 		for (size_t p = 0; p < this->number_of_nodes[layer_index]; p++)
 		{
-			this->bias_matrix_no_batch[layer_index][p] = dist(gen);
+			this->bias_matrix_no_batch[layer_index][p] = 0; // 0으로 초기화
 		}
 	}
 
@@ -1532,6 +1621,7 @@ void bpl::Model::learning(size_t epoch, size_t batch_size, early_stopping_parame
 			if ((prev_loss - current_loss) > early_stopping.min_loss) patience_stack = 0;
 			else patience_stack++;
 
+			//if(current_loss < 0) { printf("Learning Stopped.\n"); break; } // 학습 종료
 			if (patience_stack >= early_stopping.patience) { printf("Learning Stopped.\n"); break; } // 학습 종료
 		}
 	}
@@ -1595,7 +1685,7 @@ vector<vector<data_type>> bpl::Model::predictFromFile(const char* test_file)
 		if (this->out_hidden_layer_no_batch[layer_index] == NULL) { errorHandling("predictFromFile", ErrorType::InSufficientMemory, "out_hidden_layer_no_batch"); return vector<vector<data_type>>(); }
 	}
 
-	vector<vector<data_type>> result;
+	vector<vector<data_type>> result(this->test_layer.size(), vector<double>(this->number_of_nodes.back()));
 	checkCUBLAS(cublasCreate(&this->handle));
 	for (size_t dataset_index = 0; dataset_index < this->test_layer.size(); dataset_index++)
 	{

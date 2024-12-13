@@ -23,7 +23,7 @@ namespace bpl
 		/// <returns>(m * r) 행렬</returns>
 		static vector<vector<double>> matrixMultiplication(vector<vector<double>> matrix1, vector<vector<double>> matrix2);
 
-		static double* matrixMultiplication(int m, int n, int k, double* A, double* B);
+		static void matrixMultiplication(int m, int n, int k, double* A, double* B, double* C);
 
 		static vector<int> oneHotEncoding(vector<double> data);
 
@@ -125,15 +125,23 @@ namespace bpl
 		/// </summary>
 		/// <param name="target">실제값(One-Hot Vector)</param>
 		/// <param name="output">예측값(Softmax || Sigmoid)</param>
-		/// <returns></returns>
+		/// <returns>(-1 / n) * target * log(output) + (1 - target) * log(1 - output)</returns> 
 		static double BinaryCrossEntropy(vector<double> target, vector<double> output);
+
+		/// <summary>
+		/// Binary Cross Entropy Loss(이진 교차 엔트로피 손실 함수)
+		/// </summary>
+		/// <param name="target">실제값(One-Hot Vector)</param>
+		/// <param name="output">예측값(Softmax || Sigmoid)</param>
+		/// <returns>(-1 / n) * target * log(output) + (1 - target) * log(1 - output)</returns>
+		static double BinaryCrossEntropy(double* target, double* output, int n);
 
 		/// <summary>
 		/// Categorical Cross Entropy Loss(범주형 교차 엔트로피 손실 함수): 다중 분류
 		/// </summary>
 		/// <param name="target">실제값(One-Hot Vector)</param>
 		/// <param name="output">예측값(Softmax)</param>
-		/// <returns></returns>
+		/// <returns>(-1) * ∑(target * log(output))</returns>
 		static double CategoricalCrossEntropy(vector<double> target, vector<double> output);
 
 		/// <summary>
@@ -142,7 +150,7 @@ namespace bpl
 		/// <param name="target">실제값(One-Hot Vector)</param>
 		/// <param name="output">예측값(Softmax)</param>
 		/// <param name="n">배열 길이: 실제값 길이 = 예측값 길이</param>
-		/// <returns></returns>
+		/// <returns>(-1) * ∑(target * log(output))</returns>
 		static double CategoricalCrossEntropy(double* target, double* output, int n);
 
 		/// <summary>

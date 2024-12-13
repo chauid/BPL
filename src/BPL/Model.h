@@ -26,9 +26,10 @@ namespace bpl
 	enum class WeightInitMethod
 	{
 		ZeroInitialize, // 0 초기화
-		UniformDistribution, // 균등 분포
 		NormalDistribution, // 정규 분포
-		XavierGlorot, // sigmoid, tanh에 적합
+		UniformDistribution, // 균등 분포
+		XavierUniformDistribution,
+		XavierNormalDistribution, // sigmoid, tanh에 적합
 		He // LeRU에 적합
 	};
 
@@ -87,6 +88,19 @@ namespace bpl
 		// v_hat = v(t + 1) / (1 - β2)
 		// W(t + 1) = W(t) - η * m_hat / (√(v_hat) + ε)
 		Adam
+	};
+
+	/// <summary>
+	/// 은닉층 유형
+	/// </summary>
+	enum class LayerType
+	{
+		Dense,
+		Convolution,
+		SimpleRNN,
+		LSTM,
+		Dropout,
+		Flatten
 	};
 
 	/// <summary>
@@ -185,6 +199,7 @@ namespace bpl
 			InvalidParamsError, // 잘못된 파라미터 입력
 			FunctionError, // 함수 에러
 			InSufficientMemory, // 메모리 할당 에러
+			DataError, // 주어진 데이터 처리 에러
 			CudaError, // CUDA Error
 			CuBLASError // CuBLAS Error
 		};
@@ -257,8 +272,11 @@ namespace bpl
 		/// </summary>
 		/// <param name="node_count">해당 은닉층의 노드(뉴런) 수</param>
 		/// <param name="active_function">해당 은닉층의 활성화 함수</param>
-		void addLayer(int node_count, ActiveFunction active_function);
+		void addDenseLayer(int node_count, ActiveFunction active_function);
 
+		/// <summary>
+		///  1차원 데이터로 변환: x[1][1], x[1][2],..., x[1][n] x[2][1],... -> x1, x2, x3.. x[n * m]
+		/// </summary>
 		void addFlattenLayer();
 
 		void addDropoutLayer(float dropout_rate);
