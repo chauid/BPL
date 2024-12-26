@@ -491,9 +491,7 @@ void bpl::Model::backPropagation(size_t dataset_index, size_t batch_size, int t)
 				if (debug_mode) cout << "delta hidden layer= " << -(2.0 / target_length) << "*" << (target_p - out_p) << "*" << active_diff << '\n';
 				break;
 			case LossFunction::BinaryCrossEntropyLoss:
-				// target == 1, (target / output)
-				// target == 0, -(1 - target) / (1 - output)
-				// ¡ÓError[p]/¡Óout[p] = -(1 / pn) * ()
+				// ¡ÓError[p]/¡Óout[p] = -(1 / pn) * (target / output) + (1 - target) / (1 - output)
 				if (out_p < this->epsilon) out_p = this->epsilon;
 				if (out_p > (1 - this->epsilon)) out_p = 1 - this->epsilon;
 				this->delta_hidden_layer[this->number_of_hidden_layer - 1][batch_index * target_length + p] = -(target_p / out_p) + (1 - target_p) / (1 - out_p);
